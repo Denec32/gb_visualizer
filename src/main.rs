@@ -41,10 +41,21 @@ impl CartridgeReader {
         self.pos += 1;
         opcode
     }
-}
 
-fn get_block(opcode: u8) -> u8 {
-    opcode >> 6
+    fn get_imm16(&mut self) -> u16 {
+        let higher_nimble = self.get_next();
+        let lower_nimble = self.get_next();
+
+        (lower_nimble as u16) << 8 | higher_nimble as u16
+    }
+
+    fn set_position(&mut self, pos: usize) {
+        self.pos = pos;
+    }
+
+    fn get_imm8(&mut self) -> u8 {
+        self.get_next()
+    }
 }
 
 fn main() {
@@ -57,7 +68,8 @@ fn main() {
 
     while cartridge.has_next() {
         let opcode = cartridge.get_next();
-        let line = match get_block(opcode) {
+        let block  = opcode >> 6;
+        let line = match block {
             0 => parse_block_zero(&mut cartridge, opcode),
             1 => parse_block_one(opcode),
             2 => parse_block_two(opcode),
@@ -65,7 +77,7 @@ fn main() {
             _ => panic!("wrong block number")
         };
 
-        file.write(line.as_bytes()).unwrap();
+        file.write(line.to_uppercase().as_bytes()).unwrap();
         file.write("\n".as_bytes()).unwrap();
     }
 }
@@ -189,13 +201,13 @@ fn parse_block_three(cartridge: &mut CartridgeReader, opcode: u8) -> String {
     } else if "11011001".is_match(opcode) {
         return "reti".to_string()
     } else if "110..010".is_match(opcode) {
-        cartridge.get_next();
-        cartridge.get_next();
-        return "jp cond, imm16".to_string()
+        // jp cond, imm16
+        return format!("jp cond, [{:x}]", cartridge.get_imm16());
     } else if "11000011".is_match(opcode) {
-        cartridge.get_next();
-        cartridge.get_next();
-        return "jp imm16".to_string()
+        // jp imm16
+        let jump_target = cartridge.get_imm16();
+        cartridge.set_position(jump_target as usize);
+        return format!("jp [{:x}]", jump_target);
     } else if "11101001".is_match(opcode) {
         return "jp hl".to_string()
     } else if "110..100".is_match(opcode) {
