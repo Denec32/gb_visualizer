@@ -48,6 +48,40 @@ impl CartridgeReader {
 
         (lower_nimble as u16) << 8 | higher_nimble as u16
     }
+
+    fn decode_r8(&self, r8: u8) -> String {
+        match r8 {
+            0 => String::from("B"),
+            1 => String::from("C"),
+            2 => String::from("D"),
+            3 => String::from("E"),
+            4 => String::from("H"),
+            5 => String::from("L"),
+            6 => String::from("HL"),
+            7 => String::from("A"),
+            _ => panic!("Invalid register code: {r8}")
+        }
+    }
+
+    fn decode_r16(&self, r16: u8) -> String {
+        match r16 {
+            0 => String::from("BC"),
+            1 => String::from("DE"),
+            2 => String::from("HL"),
+            3 => String::from("SP"),
+            _ => panic!("Invalid register code: {r16}")
+        }
+    }
+
+    fn decode_r16mem(&self, r16mem: u8) -> String {
+        match r16mem {
+            0 => String::from("BC"),
+            1 => String::from("DE"),
+            2 => String::from("HL+"),
+            3 => String::from("HL-"),
+            _ => panic!("Invalid register code: {r16mem}")
+        }
+    }
 }
 
 fn main() {
@@ -75,16 +109,19 @@ fn main() {
         } else if "00..0001".is_match(opcode) {
             //ld r16, imm16
             let imm16 = cartridge.read_imm16(pos);
+            let r16 = cartridge.decode_r16(opcode >> 4);
             queue.push_front(pos + 3);
-            visited.insert(pos, format!("ld r16, [{:x}]", imm16));
+            visited.insert(pos, format!("LD {r16}, {:#X}", imm16));
         } else if "00..0010".is_match(opcode) {
             //ld [r16mem], a
             queue.push_front(pos + 1);
-            visited.insert(pos, "ld [r16mem], a".to_string());
+            let r16mem = cartridge.decode_r16mem(opcode >> 4);
+            visited.insert(pos, format!("LD [{r16mem}], A"));
         } else if "00..1010".is_match(opcode) {
             //ld a, [r16mem]
             queue.push_front(pos + 1);
-            visited.insert(pos, "ld a, [r16mem]".to_string());
+            let r16mem = cartridge.decode_r16mem(opcode >> 4);
+            visited.insert(pos, format!("LD A, [{r16mem}]"));
         } else if "00001000".is_match(opcode) {
             //ld [imm16], sp
             let imm16 = cartridge.read_imm16(pos);
@@ -93,11 +130,13 @@ fn main() {
         } else if "00..0011".is_match(opcode) {
             //inc r16
             queue.push_front(pos + 1);
-            visited.insert(pos, "inc r16".to_string());
+            let r16 = cartridge.decode_r16(opcode >> 4);
+            visited.insert(pos, format!("INC {r16}"));
         } else if "00..1011".is_match(opcode) {
             //dec r16
             queue.push_front(pos + 1);
-            visited.insert(pos, "dec r16".to_string());
+            let r16 = cartridge.decode_r16(opcode >> 4);
+            visited.insert(pos, format!("DEC {r16}"));
         } else if "00..1001".is_match(opcode) {
             //add hl, r16
             queue.push_front(pos + 1);
@@ -112,9 +151,10 @@ fn main() {
             visited.insert(pos, "dec r8".to_string());
         } else if "00...110".is_match(opcode) {
             //"ld r8, imm8"
+            let r8 = cartridge.decode_r8(opcode >> 3);
             let imm8 = cartridge.read_imm8(pos);
             queue.push_front(pos + 2);
-            visited.insert(pos, format!("ld r8, {:x}", imm8));
+            visited.insert(pos, format!("LD {r8}, {:#X}", imm8));
         } else if "00000111".is_match(opcode) {
             //rlca
             queue.push_front(pos + 1);
@@ -162,8 +202,10 @@ fn main() {
             panic!("unimplemented");
         } else if "01......".is_match(opcode) {
             //ld r8, r8
+            let r8_1 = cartridge.decode_r8((0b00111000 & opcode) >> 4);
+            let r8_2 = cartridge.decode_r8(0b00000111 & opcode);
             queue.push_front(pos + 1);
-            visited.insert(pos, "ld r8, r8".to_string());
+            visited.insert(pos, format!("LD {r8_1}, {r8_2}"));
         } else if "10000...".is_match(opcode) {
             //add a, r8
             queue.push_front(pos + 1);
@@ -191,7 +233,8 @@ fn main() {
         } else if "10110...".is_match(opcode) {
             //or a, r8
             queue.push_front(pos + 1);
-            visited.insert(pos, "or a, r8".to_string());
+            let r8 = cartridge.decode_r8(opcode & 0b00000111);
+            visited.insert(pos, format!("OR A, {r8}"));
         } else if "10111...".is_match(opcode) {
             //cp a, r8
             queue.push_front(pos + 1);
@@ -228,7 +271,7 @@ fn main() {
             //cp a, imm8
             let imm8 = cartridge.read_imm8(pos);
             queue.push_front(pos + 2);
-            visited.insert(pos, format!("cp a, [{:x}]", imm8));
+            visited.insert(pos, format!("CP A, [{:#X}]", imm8));
         } else if "110..000".is_match(opcode) {
             //"ret cond".to_string()
             panic!("unimplemented");
@@ -243,12 +286,12 @@ fn main() {
             let imm16 = cartridge.read_imm16(pos);
             queue.push_front(pos + 3);
             queue.push_front(imm16 as usize);
-            visited.insert(pos, format!("jp cond, [{:x}]", imm16));
+            visited.insert(pos, format!("JP COND, {imm16}"));
         } else if "11000011".is_match(opcode) {
             // jp imm16
-            let jump_target = cartridge.read_imm16(pos);
-            queue.push_front(jump_target as usize);
-            visited.insert(pos, format!("jp [{}]", jump_target));
+            let imm16 = cartridge.read_imm16(pos);
+            queue.push_front(imm16 as usize);
+            visited.insert(pos, format!("JP {imm16}"));
         } else if "11101001".is_match(opcode) {
             //"jp hl".to_string()
             panic!("unimplemented");
@@ -285,7 +328,7 @@ fn main() {
             //ld [imm16], a
             let imm16 = cartridge.read_imm16(pos);
             queue.push_front(pos + 3);
-            visited.insert(pos, format!("ld [{:x}], a", imm16));
+            visited.insert(pos, format!("LD [{:#X}], A", imm16));
         } else if "11110010".is_match(opcode) {
             //"ldh a, [c]".to_string()
             panic!("unimplemented");
@@ -297,7 +340,7 @@ fn main() {
             //ld a, [imm16]
             let imm16 = cartridge.read_imm16(pos);
             queue.push_front(pos + 3);
-            visited.insert(pos, format!("ld a, [{:x}]", imm16));
+            visited.insert(pos, format!("LD A, [{:#X}]", imm16));
         } else if "11101000".is_match(opcode) {
             //cartridge.get_next();
             //"add sp, imm8".to_string()
@@ -322,6 +365,6 @@ fn main() {
     }
 
     for entry in &visited {
-        println!("{}: {}", entry.0, entry.1.to_uppercase());
+        println!("{}: {}", entry.0, entry.1);
     }
 }
