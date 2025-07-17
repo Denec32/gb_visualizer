@@ -82,6 +82,27 @@ impl CartridgeReader {
             _ => panic!("Invalid register code: {r16mem}")
         }
     }
+
+    fn decode_condition(&self, cond: u8) -> String {
+        match cond {
+            0 => String::from("ZERO FLAG NOT SET"),
+            1 => String::from("ZERO FLAG SET"),
+            2 => String::from("CARRY FLAG NOT SET"),
+            3 => String::from("CARRY FLAG SET"),
+            _ => panic!("Invalid condition code: {cond}")
+        }
+    }
+
+    fn decode_memory_address(&self, address: u16) -> String {
+        match address {
+            0x90 => String::from("CARTRIDGE ROM"),
+            0xFF26 => String::from("NR52 ACU"),
+            0xFF40 => String::from("LCD Control"),
+            0xFF44 => String::from("LY"),
+            0xFF47 => String::from("BGP"),
+            _ => panic!("Invalid memory address: {address}")
+        }
+    }
 }
 
 fn main() {
@@ -271,7 +292,7 @@ fn main() {
             //cp a, imm8
             let imm8 = cartridge.read_imm8(pos);
             queue.push_front(pos + 2);
-            visited.insert(pos, format!("CP A, [{:#X}]", imm8));
+            visited.insert(pos, format!("CP A, {:#X}", imm8));
         } else if "110..000".is_match(opcode) {
             //"ret cond".to_string()
             panic!("unimplemented");
@@ -284,9 +305,10 @@ fn main() {
         } else if "110..010".is_match(opcode) {
             // jp cond, imm16
             let imm16 = cartridge.read_imm16(pos);
+            let cond = cartridge.decode_condition((opcode & 0b00011000) >> 3);
             queue.push_front(pos + 3);
             queue.push_front(imm16 as usize);
-            visited.insert(pos, format!("JP COND, {imm16}"));
+            visited.insert(pos, format!("JP [{cond}], {imm16}"));
         } else if "11000011".is_match(opcode) {
             // jp imm16
             let imm16 = cartridge.read_imm16(pos);
@@ -328,7 +350,7 @@ fn main() {
             //ld [imm16], a
             let imm16 = cartridge.read_imm16(pos);
             queue.push_front(pos + 3);
-            visited.insert(pos, format!("LD [{:#X}], A", imm16));
+            visited.insert(pos, format!("LD [m:{}], A", cartridge.decode_memory_address(imm16)));
         } else if "11110010".is_match(opcode) {
             //"ldh a, [c]".to_string()
             panic!("unimplemented");
@@ -340,7 +362,7 @@ fn main() {
             //ld a, [imm16]
             let imm16 = cartridge.read_imm16(pos);
             queue.push_front(pos + 3);
-            visited.insert(pos, format!("LD A, [{:#X}]", imm16));
+            visited.insert(pos, format!("LD A, [m:{}]", cartridge.decode_memory_address(imm16)));
         } else if "11101000".is_match(opcode) {
             //cartridge.get_next();
             //"add sp, imm8".to_string()
